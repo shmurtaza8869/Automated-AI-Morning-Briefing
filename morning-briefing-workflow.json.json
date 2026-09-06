@@ -1,0 +1,298 @@
+{
+  "name": "Automated AI Morning Briefing",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "7ee44700-c2dc-46c2-a9e6-37a99c3872c6",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://api.open-meteo.com/v1/forecast",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "latitude",
+              "value": "33.5651"
+            },
+            {
+              "name": "longitude",
+              "value": "73.0169"
+            },
+            {
+              "name": "current",
+              "value": "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m"
+            },
+            {
+              "name": "timezone",
+              "value": "Asia/Karachi"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        144,
+        -160
+      ],
+      "id": "9eb991f0-869e-49cf-96d9-00f51bad803b",
+      "name": "Get Rawalpindi Weather"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.restcountries.com/countries/v5/names.common/{{ ['Japan','Canada','Brazil','Egypt','Norway','Kenya','Australia'][$now.weekday - 1] }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        256,
+        48
+      ],
+      "id": "f53b345d-1329-4b02-8679-7084a070acbf",
+      "name": "Get Country",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "O4MBh48KAlkEHUkl",
+          "name": "REST Countries API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"openai/gpt-4o-mini\",\n  \"temperature\": 0.7,\n  \"max_tokens\": 200,\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You write short, friendly morning briefings.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Create a friendly 3-sentence morning briefing using this information.\\n\\nWeather in Rawalpindi:\\nTemperature: {{$('Get Rawalpindi Weather').item.json.current.temperature_2m}} °C\\nFeels like: {{$('Get Rawalpindi Weather').item.json.current.apparent_temperature}} °C\\nHumidity: {{$('Get Rawalpindi Weather').item.json.current.relative_humidity_2m}}%\\nWind: {{$('Get Rawalpindi Weather').item.json.current.wind_speed_10m}} km/h\\n\\nCountry of the day:\\n{{$('Get Country').item.json.data.objects[0].names.common}}\\n\\nCapital:\\n{{$('Get Country').item.json.data.objects[0].capitals[0].name}}\\n\\nPopulation:\\n{{$('Get Country').item.json.data.objects[0].population}}\\n\\nRules:\\n- Exactly 3 sentences.\\n- Friendly and useful.\\n- Mention today's weather.\\n- Mention the country of the day.\\n- Do not use bullet points.\\n- Do not mention that you are an AI.\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        416,
+        -160
+      ],
+      "id": "2ecce58e-87f8-44ce-8790-eedde4956d04",
+      "name": "Generate AI Briefing",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "x18NgvqSqBOGXzbg",
+          "name": "OpenRouter API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const weather = $('Get Rawalpindi Weather').first().json;\nconst countryResponse = $('Get Country').first().json;\nconst aiResponse = $('Generate AI Briefing').first().json;\n\nconst country =\n  countryResponse.data?.objects?.[0] ||\n  countryResponse.data?.[0] ||\n  {};\n\nconst current = weather.current || {};\n\nconst weatherCodes = {\n  0: \"Clear sky\",\n  1: \"Mainly clear\",\n  2: \"Partly cloudy\",\n  3: \"Overcast\",\n  45: \"Fog\",\n  48: \"Depositing rime fog\",\n  51: \"Light drizzle\",\n  53: \"Moderate drizzle\",\n  55: \"Dense drizzle\",\n  61: \"Slight rain\",\n  63: \"Moderate rain\",\n  65: \"Heavy rain\",\n  71: \"Slight snow\",\n  73: \"Moderate snow\",\n  75: \"Heavy snow\",\n  80: \"Slight rain showers\",\n  81: \"Moderate rain showers\",\n  82: \"Violent rain showers\",\n  95: \"Thunderstorm\",\n  96: \"Thunderstorm with slight hail\",\n  99: \"Thunderstorm with heavy hail\"\n};\n\nconst weatherDescription =\n  weatherCodes[current.weather_code] ||\n  \"Unknown weather\";\n\nconst briefing =\n  aiResponse.choices?.[0]?.message?.content ||\n  \"AI briefing could not be generated.\";\n\nreturn [\n  {\n    json: {\n      briefing_date: new Date().toISOString().split('T')[0],\n\n      city: \"Rawalpindi\",\n\n      temperature: current.temperature_2m ?? null,\n\n      weather: weatherDescription,\n\n      country: country.names?.common ?? \"Unknown\",\n\n      country_capital:\n        country.capitals?.[0]?.name ?? \"Unknown\",\n\n      country_population:\n        country.population ?? null,\n\n      ai_briefing: briefing.trim()\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        528,
+        64
+      ],
+      "id": "7099c28d-269f-465a-9404-20559b54805a",
+      "name": "Build Final Briefing"
+    },
+    {
+      "parameters": {
+        "tableId": "=daily_briefings",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "briefing_date",
+              "fieldValue": "={{ $json.briefing_date }}"
+            },
+            {
+              "fieldId": "city",
+              "fieldValue": "={{ $json.city }}"
+            },
+            {
+              "fieldId": "temperature",
+              "fieldValue": "={{ $json.temperature }}"
+            },
+            {
+              "fieldId": "weather",
+              "fieldValue": "={{ $json.weather }}"
+            },
+            {
+              "fieldId": "country",
+              "fieldValue": "={{ $json.country }}"
+            },
+            {
+              "fieldId": "country_capital",
+              "fieldValue": "={{ $json.country_capital }}"
+            },
+            {
+              "fieldId": "country_population",
+              "fieldValue": "={{ $json.country_population }}"
+            },
+            {
+              "fieldId": "ai_briefing",
+              "fieldValue": "={{ $json.ai_briefing }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        640,
+        -176
+      ],
+      "id": "3552fe16-841e-4824-8679-3252390890a6",
+      "name": "Save to Supabase",
+      "credentials": {
+        "supabaseApi": {
+          "id": "EEsCUAxHWMfVzCWr",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "shmurtaza8869@gmail.com",
+        "subject": "=🌅 Your AI Morning Briefing — {{ $json.briefing_date }}",
+        "message": "=<p>Good morning!</p>  <p>{{ $json.ai_briefing }}</p>  <hr>  <p><strong>Weather:</strong><br> {{ $json.temperature }} °C</p>  <p><strong>Country of the Day:</strong><br> {{ $json.country }}</p>  <p><strong>Capital:</strong><br> {{ $json.country_capital }}</p>  <p>Have a great day!</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        864,
+        -176
+      ],
+      "id": "baaa1ae4-618b-40a6-ba25-ca470b027292",
+      "name": "Send Morning Briefing",
+      "webhookId": "49297750-cbfb-4fdd-b0aa-f447b8fb980e",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "0CmYBKTR2ORGOndk",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Rawalpindi Weather",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Rawalpindi Weather": {
+      "main": [
+        [
+          {
+            "node": "Get Country",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Country": {
+      "main": [
+        [
+          {
+            "node": "Generate AI Briefing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate AI Briefing": {
+      "main": [
+        [
+          {
+            "node": "Build Final Briefing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Final Briefing": {
+      "main": [
+        [
+          {
+            "node": "Save to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Supabase": {
+      "main": [
+        [
+          {
+            "node": "Send Morning Briefing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "2201d3d1-ffe2-4e3c-a6a4-6ea82e35b291",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "9eac10e5cb68650b0d43e58f151007b0740763018d7dc11486dc7523f23ed42c"
+  },
+  "nodeGroups": [],
+  "id": "9VjsBTlrJ3ctCGHI",
+  "tags": []
+}
